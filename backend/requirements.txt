@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+geoalchemy2
+psycopg[binary]
+redis
+geopandas
+torch
+xgboost
+shap
+pydantic
+python-dotenv
+requests
+google-generativeai
+httpx

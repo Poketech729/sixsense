@@ -216,3 +216,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node & Frontend Dependencies (CRITICAL)
+node_modules/
+.pnp
+.pnp.js
+
+# Frontend Build Outputs
+dist/
+dist-ssr/
+*.local
+
+# Secret Files
+.env.local
+.env.production
+.env*.local
+
+# System & OS Files
+.DS_Store
+Thumbs.db

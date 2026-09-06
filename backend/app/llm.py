@@ -1,75 +1,111 @@
 import os
-import requests
-import google.generativeai as genai
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+AISTUDIO_API_KEY = os.getenv("AISTUDIO_API_KEY", "").strip()
 
-# Configure Gemini client if key is supplied
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+REGIONAL_HOTLINES = "NDMA: 1078, Emergency: 112, Police: 100, Ambulance: 102"
 
 
-def query_ollama(prompt: str, system_prompt: str = "") -> str:
-    url = f"{OLLAMA_BASE_URL}/api/generate"
+async def _call_gemini_api(prompt: str, key: str) -> str:
+    # Uses active Gemini 3.6 Flash model endpoint
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": key
+    }
     payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "system": system_prompt,
-        "stream": False,
-        "options": {
-            "num_predict": 256,  # Cap max tokens generated to speed up execution
-            "temperature": 0.2    # Lower randomness for faster deterministic responses
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 2048
         }
     }
-    response = requests.post(url, json=payload, timeout=60)
-    response.raise_for_status()
-    return response.json().get("response", "")
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        res = await client.post(url, headers=headers, json=payload)
+        if res.status_code == 200:
+            data = res.json()
+            candidates = data.get("candidates", [])
+            if candidates and "content" in candidates[0]:
+                return candidates[0]["content"]["parts"][0]["text"]
+        
+        print(f"[Gemini REST Error]: Status {res.status_code} - {res.text}")
+        raise Exception(f"Gemini API Returned HTTP {res.status_code}: {res.text}")
 
-def query_gemini(prompt: str, system_prompt: str = "") -> str:
-    key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not key or key == "your_gemini_api_key_here":
-        raise ValueError("GEMINI_API_KEY is missing in backend/.env file.")
-    
-    genai.configure(api_key=key)
-    
-    # Use Gemini 1.5 Flash with search tools enabled
-    model = genai.GenerativeModel(
-        model_name="gemini-3.6-flash",
-        system_instruction=system_prompt if system_prompt else None,
-        tools=['google_search_retrieval']
+
+async def _call_openai_api(prompt: str, key: str) -> str:
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1000
+    }
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        res = await client.post(url, headers=headers, json=payload)
+        if res.status_code == 200:
+            data = res.json()
+            return data["choices"][0]["message"]["content"]
+    raise Exception(f"OpenAI Status {res.status_code}")
+
+
+async def query_llm(prompt: str, context_data: dict = None, target_language: str = "English") -> str:
+    clean_msg = prompt.strip().lower()
+
+    if clean_msg in ["hi", "hello", "hey", "namaste", "hola", "start"]:
+        if target_language.lower().startswith("hin"):
+            return "नमस्ते! मैं SixSense आपदा सहायता बॉट हूँ। आप सुरक्षित स्थान पर हैं या आपको सहायता की आवश्यकता है?"
+        return "Hello! I am SixSense Emergency Assistant. Are you in a safe location, or do you require immediate disaster response assistance?"
+
+    system_context = (
+        f"You are SixSense AI, an empathetic, highly responsive emergency and survival assistant.\n"
+        f"CORE DIRECTIVE:\n"
+        f"1. Fulfill ANY user request as long as it pertains to survival, emergency prep, disaster response, first aid, or physical safety.\n"
+        f"2. REFUSE immediately and neutrally if the query is completely unrelated to safety, survival, disaster, or health.\n"
+        f"3. Provide direct, highly actionable, step-by-step guidance formatted cleanly with bullet points and bold headers.\n"
+        f"4. Always include pertinent regional emergency hotlines ({REGIONAL_HOTLINES}).\n"
+        f"5. Respond in {target_language}."
     )
-    response = model.generate_content(prompt)
-    return response.text
+    
+    if context_data:
+        system_context += f"\nActive Telemetry: {context_data}"
 
-def generate_llm_response(prompt: str, system_prompt: str = "") -> dict:
-    """
-    Unified entrypoint: Tries configured LLM_PROVIDER first.
-    Falls back to Gemini if Ollama fails or is offline.
-    """
-    provider_used = LLM_PROVIDER
-    
-    if LLM_PROVIDER == "ollama":
+    full_prompt = f"{system_context}\n\nUser Question: {prompt}"
+
+    # Tier 1: Gemini API
+    if GEMINI_API_KEY:
         try:
-            output = query_ollama(prompt, system_prompt)
-            return {"provider": "ollama", "model": OLLAMA_MODEL, "response": output}
+            return await _call_gemini_api(full_prompt, GEMINI_API_KEY)
         except Exception as e:
-            # Fallback to Gemini if configured
-            if GEMINI_API_KEY:
-                provider_used = "gemini (fallback)"
-                output = query_gemini(prompt, system_prompt)
-                return {"provider": provider_used, "model": "gemini-3.6-flash", "response": output}
-            else:
-                raise RuntimeError(f"Ollama failed ({str(e)}) and GEMINI_API_KEY is not set for fallback.")
-                
-    elif LLM_PROVIDER == "gemini":
-        output = query_gemini(prompt, system_prompt)
-        return {"provider": "gemini", "model": "gemini-3.6-flash", "response": output}
-    
-    else:
-        raise ValueError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}")
+            print(f"[Tier 1 Gemini Error]: {e}")
+
+    # Tier 2: OpenAI API
+    if OPENAI_API_KEY:
+        try:
+            return await _call_openai_api(full_prompt, OPENAI_API_KEY)
+        except Exception as e:
+            print(f"[Tier 2 OpenAI Error]: {e}")
+
+    # Tier 3: AI Studio Key Fallback
+    if AISTUDIO_API_KEY:
+        try:
+            return await _call_gemini_api(full_prompt, AISTUDIO_API_KEY)
+        except Exception as e:
+            print(f"[Tier 3 Gemini Error]: {e}")
+
+    # Final hardcoded emergency protocol if all cloud calls fail
+    return (
+        "🚨 **EMERGENCY PROTOCOL ACTIVE**\n\n"
+        "If you are in immediate danger:\n"
+        "1. **Stay calm and seek safe shelter.**\n"
+        "2. **Call Emergency Hotlines directly.**\n\n"
+        "📞 **HOTLINES:** NDMA: **1078** | Emergency: **112** | Ambulance: **102**"
+    )

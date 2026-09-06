@@ -40,7 +40,7 @@ def query_gemini(prompt: str, system_prompt: str = "") -> str:
     
     # Use Gemini 1.5 Flash with search tools enabled
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name="gemini-3.6-flash",
         system_instruction=system_prompt if system_prompt else None,
         tools=['google_search_retrieval']
     )
@@ -63,13 +63,13 @@ def generate_llm_response(prompt: str, system_prompt: str = "") -> dict:
             if GEMINI_API_KEY:
                 provider_used = "gemini (fallback)"
                 output = query_gemini(prompt, system_prompt)
-                return {"provider": provider_used, "model": "gemini-1.5-flash", "response": output}
+                return {"provider": provider_used, "model": "gemini-3.6-flash", "response": output}
             else:
                 raise RuntimeError(f"Ollama failed ({str(e)}) and GEMINI_API_KEY is not set for fallback.")
                 
     elif LLM_PROVIDER == "gemini":
         output = query_gemini(prompt, system_prompt)
-        return {"provider": "gemini", "model": "gemini-1.5-flash", "response": output}
+        return {"provider": "gemini", "model": "gemini-3.6-flash", "response": output}
     
     else:
         raise ValueError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}")

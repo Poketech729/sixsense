@@ -11,18 +11,43 @@ AISTUDIO_API_KEY = os.getenv("AISTUDIO_API_KEY", "").strip()
 
 
 async def _call_gemini_api(prompt: str, key: str) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 200}
-    }
-    async with httpx.AsyncClient(timeout=4.0) as client:
-        res = await client.post(url, json=payload)
-        if res.status_code == 200:
-            data = res.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        print(f"[Gemini Error Response]: {res.status_code} - {res.text}")
-    raise Exception(f"Gemini HTTP {res.status_code}")
+    # Try gemini-1.5-flash endpoint
+    models = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"]
+    last_error = ""
+
+    for model_name in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 250
+            }
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        return candidates[0]["content"]["parts"][0]["text"]
+                
+                # Store error details for debugging
+                last_error = f"Model '{model_name}' Status {res.status_code}: {res.text}"
+                print(f"[Gemini REST Error]: {last_error}")
+        except Exception as err:
+            last_error = str(err)
+            print(f"[Gemini Network Error]: {last_error}")
+
+    raise Exception(f"All Gemini models failed. Last error: {last_error}")
 
 
 async def _call_openai_api(prompt: str, key: str) -> str:
@@ -31,16 +56,14 @@ async def _call_openai_api(prompt: str, key: str) -> str:
     payload = {
         "model": "gpt-4o-mini",
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 200,
-        "temperature": 0.3
+        "max_tokens": 200
     }
-    async with httpx.AsyncClient(timeout=4.0) as client:
+    async with httpx.AsyncClient(timeout=5.0) as client:
         res = await client.post(url, headers=headers, json=payload)
         if res.status_code == 200:
             data = res.json()
             return data["choices"][0]["message"]["content"]
-        print(f"[OpenAI Error Response]: {res.status_code} - {res.text}")
-    raise Exception(f"OpenAI HTTP {res.status_code}")
+    raise Exception(f"OpenAI Status {res.status_code}")
 
 
 async def query_llm(prompt: str, context_data: dict = None, target_language: str = "English") -> str:
@@ -53,44 +76,47 @@ async def query_llm(prompt: str, context_data: dict = None, target_language: str
         return "Hello! I am SixSense Emergency Assistant. Are you in a safe location, or do you require immediate disaster response assistance?"
 
     system_context = (
-        f"You are SixSense AI, an empathetic disaster assistant and medical triage guide.\n"
+        f"You are SixSense AI, an empathetic disaster assistant and emergency safety guide.\n"
         f"RULES:\n"
-        f"1. Acknowledge user symptoms directly with empathy (e.g. dizziness, medication, entrapment).\n"
-        f"2. Provide direct first-aid advice (e.g. 'Do NOT take painkillers if bleeding or dizzy from head trauma—conserve water and stay still').\n"
-        f"3. Always mention Emergency Hotlines (NDMA 1078 | Emergency 112).\n"
-        f"4. Respond entirely in {target_language}.\n"
-        f"5. Keep responses concise (under 80 words)."
+        f"1. Address the user's situation directly with calm empathy.\n"
+        f"2. For medical questions (e.g., punctured arterial wall, bleeding, fractures), explain clearly in simple terms and give direct first-aid instructions (e.g. apply firm direct pressure, do not remove embedded objects, elevate if possible).\n"
+        f"3. Always list primary emergency numbers (NDMA 1078 | Emergency 112 | Ambulance 102).\n"
+        f"4. Respond in {target_language}.\n"
+        f"5. Keep responses concise and scannable."
     )
 
     if context_data:
-        system_context += f"\nTelemetry Context: {context_data}"
+        system_context += f"\nActive Telemetry: {context_data}"
 
     full_prompt = f"{system_context}\n\nUser Question: {prompt}"
 
-    # Tier 1: Primary Gemini API
-    if GEMINI_API_KEY and len(GEMINI_API_KEY) > 5:
+    # Tier 1: Primary Gemini Key
+    if GEMINI_API_KEY:
         try:
             return await _call_gemini_api(full_prompt, GEMINI_API_KEY)
         except Exception as e:
-            print(f"[Tier 1 Gemini Failed]: {e}")
+            gemini_err = str(e)
 
-    # Tier 2: OpenAI
-    if OPENAI_API_KEY and len(OPENAI_API_KEY) > 5:
+    # Tier 2: OpenAI Key
+    if OPENAI_API_KEY:
         try:
             return await _call_openai_api(full_prompt, OPENAI_API_KEY)
         except Exception as e:
-            print(f"[Tier 2 OpenAI Failed]: {e}")
+            pass
 
     # Tier 3: Secondary AI Studio Key
-    if AISTUDIO_API_KEY and len(AISTUDIO_API_KEY) > 5:
+    if AISTUDIO_API_KEY:
         try:
             return await _call_gemini_api(full_prompt, AISTUDIO_API_KEY)
         except Exception as e:
-            print(f"[Tier 3 AI Studio Failed]: {e}")
+            pass
 
-    # Dynamic Fallback (If no API keys are loaded in Vercel environment)
+    # Dynamic Error Return (Exposes exact API response error if Gemini fails)
     return (
-        f"Stay calm. If you are feeling dizzy, **sit or lie down immediately** to prevent injury from falling. "
-        f"Do NOT take unprescribed painkillers without medical supervision. "
-        f"Call NDMA **1078** or **112** for emergency medical dispatch."
+        f"⚠️ **Gemini REST API Error Details:**\n`{gemini_err}`\n\n"
+        f"--- Emergency Directives ---\n"
+        f"If dealing with an arterial puncture/severe bleeding:\n"
+        f"1. **Apply Continuous Direct Pressure** using a clean cloth or garment.\n"
+        f"2. **Do NOT release pressure** or remove soaked bandages—add more cloth on top.\n"
+        f"3. Call **102** (Ambulance) or **112** (Emergency) immediately."
     )

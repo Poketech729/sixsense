@@ -2,6 +2,12 @@ from http import client
 import os
 import httpx
 from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Force load .env from the backend root directory regardless of execution folder
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 load_dotenv()
 
@@ -81,11 +87,16 @@ async def query_llm(prompt: str, context_data: dict = None, target_language: str
 
     full_prompt = f"{system_context}\n\nUser Question: {prompt}"
 
+    print(f"DEBUG: GEMINI_API_KEY loaded? {bool(GEMINI_API_KEY)} | Key length: {len(GEMINI_API_KEY)}")
+    print(f"DEBUG: OPENAI_API_KEY loaded? {bool(OPENAI_API_KEY)} | Key length: {len(OPENAI_API_KEY)}")
+    print(f"DEBUG: AISTUDIO_API_KEY loaded? {bool(AISTUDIO_API_KEY)} | Key length: {len(AISTUDIO_API_KEY)}")
+
+    # Inside query_llm() in backend/core/llm.py
     if GEMINI_API_KEY:
         try:
             return await _call_gemini_api(full_prompt, GEMINI_API_KEY)
         except Exception as e:
-            print(f"[Tier 1 Gemini Error]: {e}")
+            print(f"\n[CRITICAL GEMINI ERROR]: {e}\n")  # <-- ADD THIS PRINT STATEMENT
 
     if OPENAI_API_KEY:
         try:

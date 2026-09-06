@@ -1,4 +1,5 @@
 # core/llm.py
+from http import client 
 import os
 import httpx
 from dotenv import load_dotenv
@@ -29,8 +30,7 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
         }
 
     }
-    
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=5.0) as client:
         res = await client.post(url, headers=headers, json=payload)
         if res.status_code == 200:
             data = res.json()

@@ -20,10 +20,23 @@
   }
 }
 
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
 .animate-ticker {
-  animation: ticker 30s linear infinite;
+  animation: ticker 28s linear infinite;
 }
 
 .animate-fadeOut {
-  animation: fadeOut 2.8s ease-in-out forwards;
+  animation: fadeOut 2.5s ease-in-out forwards;
+}
+
+/* Custom Leaflet Pin Tweaks */
+.custom-leaflet-pin {
+  background: transparent;
+  border: none;
 }

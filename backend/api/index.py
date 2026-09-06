@@ -1,16 +1,13 @@
 import sys
 import os
 
-# Add project root and backend folder to Python path
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-BACKEND_DIR = os.path.dirname(CURRENT_DIR)
-PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+# Expose backend modules to Python runtime path
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
 
-for path in [PROJECT_ROOT, BACKEND_DIR]:
+for path in [ROOT_DIR, BACKEND_DIR]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
-try:
-    from app.main import app
-except ImportError:
-    from backend.app.main import app
+# Import the FastAPI app instance from backend/app/main.py
+from app.main import app

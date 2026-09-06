@@ -11,42 +11,38 @@ AISTUDIO_API_KEY = os.getenv("AISTUDIO_API_KEY", "").strip()
 
 
 async def _call_gemini_api(prompt: str, key: str) -> str:
-    # Supported v1beta endpoints for Google AI Studio
-    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
-    last_error = ""
-
-    for model_name in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [
-                {
-                    "parts": [{"text": prompt}]
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.3,
-                "maxOutputTokens": 300
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={key}"
+    
+    # Passing both x-goog-api-key and Content-Type headers
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": key
+    }
+    
+    payload = {
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
             }
+        ],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 300
         }
+    }
+    
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        res = await client.post(url, headers=headers, json=payload)
         
-        try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                res = await client.post(url, headers=headers, json=payload)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates and "content" in candidates[0]:
-                        return candidates[0]["content"]["parts"][0]["text"]
-                
-                last_error = f"Model '{model_name}' Status {res.status_code}: {res.text}"
-                print(f"[Gemini REST Error]: {last_error}")
-        except Exception as err:
-            last_error = str(err)
-            print(f"[Gemini Network Error]: {last_error}")
-
-    raise Exception(f"All Gemini models failed. Last error: {last_error}")
-
+        if res.status_code == 200:
+            data = res.json()
+            candidates = data.get("candidates", [])
+            if candidates and "content" in candidates[0]:
+                return candidates[0]["content"]["parts"][0]["text"]
+        
+        print(f"[Gemini REST Error]: Status {res.status_code} - {res.text}")
+        raise Exception(f"Gemini API Returned HTTP {res.status_code}: {res.text}")
+    
 async def _call_openai_api(prompt: str, key: str) -> str:
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}

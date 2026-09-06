@@ -11,8 +11,8 @@ AISTUDIO_API_KEY = os.getenv("AISTUDIO_API_KEY", "").strip()
 
 
 async def _call_gemini_api(prompt: str, key: str) -> str:
-    # Try gemini-1.5-flash endpoint
-    models = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"]
+    # Supported v1beta endpoints for Google AI Studio
+    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
     last_error = ""
 
     for model_name in models:
@@ -21,13 +21,12 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
         payload = {
             "contents": [
                 {
-                    "role": "user",
                     "parts": [{"text": prompt}]
                 }
             ],
             "generationConfig": {
                 "temperature": 0.3,
-                "maxOutputTokens": 250
+                "maxOutputTokens": 300
             }
         }
         
@@ -37,10 +36,9 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
                 if res.status_code == 200:
                     data = res.json()
                     candidates = data.get("candidates", [])
-                    if candidates:
+                    if candidates and "content" in candidates[0]:
                         return candidates[0]["content"]["parts"][0]["text"]
                 
-                # Store error details for debugging
                 last_error = f"Model '{model_name}' Status {res.status_code}: {res.text}"
                 print(f"[Gemini REST Error]: {last_error}")
         except Exception as err:
@@ -48,7 +46,6 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
             print(f"[Gemini Network Error]: {last_error}")
 
     raise Exception(f"All Gemini models failed. Last error: {last_error}")
-
 
 async def _call_openai_api(prompt: str, key: str) -> str:
     url = "https://api.openai.com/v1/chat/completions"

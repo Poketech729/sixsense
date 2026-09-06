@@ -1,15 +1,5 @@
 fastapi
-uvicorn[standard]
-sqlalchemy
-geoalchemy2
-psycopg[binary]
-redis
-geopandas
-torch
-xgboost
-shap
+uvicorn
 pydantic
-python-dotenv
-requests
-google-generativeai
 httpx
+python-dotenv

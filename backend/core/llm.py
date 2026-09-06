@@ -92,11 +92,12 @@ async def query_llm(prompt: str, context_data: dict = None, target_language: str
     print(f"DEBUG: AISTUDIO_API_KEY loaded? {bool(AISTUDIO_API_KEY)} | Key length: {len(AISTUDIO_API_KEY)}")
 
     # Inside query_llm() in backend/core/llm.py
+    # Inside query_llm() in backend/core/llm.py
     if GEMINI_API_KEY:
         try:
             return await _call_gemini_api(full_prompt, GEMINI_API_KEY)
         except Exception as e:
-            print(f"\n[CRITICAL GEMINI ERROR]: {e}\n")  # <-- ADD THIS PRINT STATEMENT
+            print(f"\n[TIER 1 GEMINI ERROR]: {e}\n")  # <-- Add this line
 
     if OPENAI_API_KEY:
         try:

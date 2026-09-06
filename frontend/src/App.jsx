@@ -71,25 +71,57 @@ export default function App() {
   };
 
   const handleChatSubmit = async (e) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
+  e.preventDefault();
+  if (!chatInput.trim()) return;
 
-    const userText = chatInput;
-    setMessages(prev => [...prev, { sender: 'user', text: userText }]);
-    setChatInput('');
-    setChatLoading(true);
+  const userText = chatInput;
+  setMessages(prev => [...prev, { sender: 'user', text: userText }]);
+  setChatInput('');
+  setChatLoading(true);
 
-    try {
-      const res = await axios.post(`${BACKEND_URL}/api/chat`, { message: userText });
-      if (res.data.status === 'success') {
-        setMessages(prev => [...prev, { sender: 'bot', text: res.data.response }]);
-      }
-    } catch (err) {
-      setMessages(prev => [...prev, { sender: 'bot', text: 'Error connecting to emergency bot service.' }]);
-    } finally {
-      setChatLoading(false);
+  try {
+    const res = await axios.post("/api/chat", { message: userText, language: "English" });
+    if (res.data && res.data.response) {
+      setMessages(prev => [...prev, { sender: 'bot', text: res.data.response }]);
+    } else {
+      setMessages(prev => [...prev, { sender: 'bot', text: '⚠️ Unable to parse bot response.' }]);
     }
-  };
+  } catch (err) {
+    console.error("Chat Error:", err);
+    setMessages(prev => [...prev, { sender: 'bot', text: '🚨 Error connecting to emergency bot service.' }]);
+  } finally {
+    setChatLoading(false);
+  }
+};
+
+  const handleSendMessage = async (userText) => {
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: userText,
+        language: "English"
+      })
+    });
+
+    // Catch non-200 HTTP statuses explicitly
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Server Error:", res.status, errText);
+      setMessages(prev => [...prev, { sender: "bot", text: "⚠️ Server temporarily unreachable." }]);
+      return;
+    }
+
+    const data = await res.json();
+    if (data && data.response) {
+      setMessages(prev => [...prev, { sender: "bot", text: data.response }]);
+    }
+  } catch (err) {
+    console.error("Network/Fetch Error:", err);
+    setMessages(prev => [...prev, { sender: "bot", text: "🚨 Connection timeout. Please try again." }]);
+  }
+};
 
   const getRiskBadge = (severity) => {
     if (!severity) return { bg: 'bg-emerald-500', text: 'SAFE' };

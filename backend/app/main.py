@@ -6,8 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-# Import core processing engines
-from core.llm import query_llm
+# Import core processing engines with fallback handling
+try:
+    from backend.core.llm import query_llm
+except ModuleNotFoundError:
+    from core.llm import query_llm
 
 app = FastAPI(title="SixSense Disaster Prevention API", version="2.0.0")
 

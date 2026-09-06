@@ -11,14 +11,12 @@ AISTUDIO_API_KEY = os.getenv("AISTUDIO_API_KEY", "").strip()
 
 
 async def _call_gemini_api(prompt: str, key: str) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={key}"
-    
-    # Passing both x-goog-api-key and Content-Type headers
+    # Target the verified working gemini-3.6-flash endpoint
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": key
     }
-    
     payload = {
         "contents": [
             {
@@ -33,7 +31,6 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
     
     async with httpx.AsyncClient(timeout=8.0) as client:
         res = await client.post(url, headers=headers, json=payload)
-        
         if res.status_code == 200:
             data = res.json()
             candidates = data.get("candidates", [])
@@ -42,7 +39,8 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
         
         print(f"[Gemini REST Error]: Status {res.status_code} - {res.text}")
         raise Exception(f"Gemini API Returned HTTP {res.status_code}: {res.text}")
-    
+
+
 async def _call_openai_api(prompt: str, key: str) -> str:
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -51,7 +49,7 @@ async def _call_openai_api(prompt: str, key: str) -> str:
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 200
     }
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    async with httpx.AsyncClient(timeout=6.0) as client:
         res = await client.post(url, headers=headers, json=payload)
         if res.status_code == 200:
             data = res.json()
@@ -72,7 +70,7 @@ async def query_llm(prompt: str, context_data: dict = None, target_language: str
         f"You are SixSense AI, an empathetic disaster assistant and emergency safety guide.\n"
         f"RULES:\n"
         f"1. Address the user's situation directly with calm empathy.\n"
-        f"2. For medical questions (e.g., punctured arterial wall, bleeding, fractures), explain clearly in simple terms and give direct first-aid instructions (e.g. apply firm direct pressure, do not remove embedded objects, elevate if possible).\n"
+        f"2. For medical or emergency scenarios, provide immediate, actionable safety directives.\n"
         f"3. Always list primary emergency numbers (NDMA 1078 | Emergency 112 | Ambulance 102).\n"
         f"4. Respond in {target_language}.\n"
         f"5. Keep responses concise and scannable."
@@ -88,28 +86,26 @@ async def query_llm(prompt: str, context_data: dict = None, target_language: str
         try:
             return await _call_gemini_api(full_prompt, GEMINI_API_KEY)
         except Exception as e:
-            gemini_err = str(e)
+            print(f"[Tier 1 Gemini Error]: {e}")
 
     # Tier 2: OpenAI Key
     if OPENAI_API_KEY:
         try:
             return await _call_openai_api(full_prompt, OPENAI_API_KEY)
         except Exception as e:
-            pass
+            print(f"[Tier 2 OpenAI Error]: {e}")
 
     # Tier 3: Secondary AI Studio Key
     if AISTUDIO_API_KEY:
         try:
             return await _call_gemini_api(full_prompt, AISTUDIO_API_KEY)
         except Exception as e:
-            pass
+            print(f"[Tier 3 Gemini Error]: {e}")
 
-    # Dynamic Error Return (Exposes exact API response error if Gemini fails)
     return (
-        f"⚠️ **Gemini REST API Error Details:**\n`{gemini_err}`\n\n"
-        f"--- Emergency Directives ---\n"
-        f"If dealing with an arterial puncture/severe bleeding:\n"
-        f"1. **Apply Continuous Direct Pressure** using a clean cloth or garment.\n"
-        f"2. **Do NOT release pressure** or remove soaked bandages—add more cloth on top.\n"
-        f"3. Call **102** (Ambulance) or **112** (Emergency) immediately."
+        "🚨 **EMERGENCY PROTOCOL ACTIVE**\n\n"
+        "If you are in immediate danger:\n"
+        "1. **Stay calm and seek safe shelter.**\n"
+        "2. **Call Emergency Hotlines directly.**\n\n"
+        "📞 **HOTLINES:** NDMA: **1078** | Emergency: **112** | Ambulance: **102**"
     )

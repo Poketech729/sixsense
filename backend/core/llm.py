@@ -2,31 +2,39 @@
 import os
 import asyncio
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 USE_LOCAL_OLLAMA = os.getenv("USE_LOCAL_OLLAMA", "false").lower() == "true"
 
-def _call_gemini_sync(full_prompt: str) -> str:
-    import google.generativeai as genai
-    genai.configure(api_key="GEMINI_API_KEY")
-    # Using gemini-1.5-flash (fastest standard inference model)
+
+def _call_gemini_sync(full_prompt: str, api_key: str) -> str:
+    genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(full_prompt)
     return response.text
 
-async def query_llm(prompt: str, context_data: dict = None) -> str:
+
+async def query_llm(prompt: str, context_data: dict = None, target_language: str = "English") -> str:
     """
     Non-blocking hybrid router:
     1. Local Ollama (if configured)
-    2. Cloud Gemini (via thread executor with timeout)
-    3. Safe Fallback Response if internet/key fails
+    2. Cloud Gemini 1.5 Flash (via thread executor with timeout)
+    3. Empathetic Fallback Protocol if offline or key fails
     """
     system_context = (
-        "You are SixSense AI, an early warning system assistant for landslide risks "
-        "in the North Eastern Region of India (SIH26001). Provide concise, authoritative, "
-        "and actionable disaster-management guidance."
+        "You are SixSense AI, an empathetic disaster assistant and early warning safety guide "
+        "for landslide risks (SIH26001).\n\n"
+        "CRITICAL RESPONSE DIRECTIVES:\n"
+        "1. DO NOT output canned template greetings (e.g., 'Hi, how can I help?') when a user is in distress, trapped, or injured.\n"
+        "2. If the user reports physical entrapment, injury, or extreme danger:\n"
+        "   - Speak with immediate empathy, calm reassurance, and clear direction.\n"
+        "   - Give 2 concise physical survival steps (e.g., conserve oxygen, stay still, tap rhythmically on metal/pipes).\n"
+        "   - Always provide official emergency hotlines: NDMA 1078 | National Emergency 112 | Ambulance 102.\n"
+        f"3. Language Requirement: Respond entirely in {target_language}.\n"
+        "4. Keep responses brief, actionable, and formatted cleanly for mobile screens."
     )
     
     if context_data:
@@ -53,22 +61,26 @@ async def query_llm(prompt: str, context_data: dict = None) -> str:
             pass  # Fallback to Gemini if Ollama isn't running
 
     # 2. Non-blocking Cloud Gemini Path with strict 8s Timeout
-    if GEMINI_API_KEY and GEMINI_API_KEY != "GEMINI_API_KEY":
+    if GEMINI_API_KEY and GEMINI_API_KEY.strip() != "":
         try:
-            # Runs synchronous Gemini SDK in a separate thread pool so Uvicorn never freezes
             answer = await asyncio.wait_for(
-                asyncio.to_thread(_call_gemini_sync, full_prompt),
+                asyncio.to_thread(_call_gemini_sync, full_prompt, GEMINI_API_KEY),
                 timeout=8.0
             )
             return answer
         except asyncio.TimeoutError:
-            return "Gemini API timed out. Defaulting to local safety guidelines."
+            pass  # Fallback to safety protocol on timeout
         except Exception as e:
-            return f"LLM Routing Error: {str(e)}"
+            print(f"[SixSense LLM Error]: {str(e)}")
 
-    # 3. Fail-safe deterministic response if no key is provided
+    # 3. Empathetic Fail-safe response if offline or key is missing
     return (
-        "SIH26001 Protocol: Under high risk conditions, activate immediate district-level "
-        "evacuation along vulnerable slope corridors, close high-risk transit segments, "
-        "and establish direct communication with emergency response teams."
+        "🚨 **EMERGENCY PROTOCOL ACTIVE**\n\n"
+        "Please remain calm. If you are trapped, injured, or in immediate danger:\n"
+        "1. **Conserve Energy:** Stay still and cover your nose and mouth if dust is present.\n"
+        "2. **Signal for Help:** Tap rhythmically on pipes or walls so rescuers can locate you.\n\n"
+        "📞 **IMMEDIATE HOTLINES:**\n"
+        "• **NDMA Helpline:** 1078\n"
+        "• **National Emergency:** 112\n"
+        "• **Ambulance:** 102"
     )

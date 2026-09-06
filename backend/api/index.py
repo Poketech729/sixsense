@@ -10,6 +10,7 @@ PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 # Inject paths into runtime Python environment
 sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, BACKEND_DIR)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Now safely import FastAPI app instance from main.py
 try:

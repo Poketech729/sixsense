@@ -13,7 +13,8 @@ REGIONAL_HOTLINES = "NDMA: 1078, Emergency: 112, Police: 100, Ambulance: 102"
 
 
 async def _call_gemini_api(prompt: str, key: str) -> str:
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
+    # Use a standard, active Gemini endpoint
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": key
@@ -26,10 +27,11 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
         ],
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 6000
+            "maxOutputTokens": 2048
         }
     }
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    # Increased timeout from 5.0s to 8.0s
+    async with httpx.AsyncClient(timeout=8.0) as client:
         res = await client.post(url, headers=headers, json=payload)
         if res.status_code == 200:
             data = res.json()
@@ -39,8 +41,7 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
         
         print(f"[Gemini REST Error]: Status {res.status_code} - {res.text}")
         raise Exception(f"Gemini API Returned HTTP {res.status_code}: {res.text}")
-
-
+    
 async def _call_openai_api(prompt: str, key: str) -> str:
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}

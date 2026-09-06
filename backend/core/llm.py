@@ -14,8 +14,8 @@ REGIONAL_HOTLINES = "NDMA: 1078, Emergency: 112, Police: 100, Ambulance: 102"
 
 
 async def _call_gemini_api(prompt: str, system_instruction: str, key: str) -> str:
-    """Calls Gemini REST API using v1beta endpoint with gemini-2.5-flash."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
+    """Calls Gemini REST API using v1beta endpoint with gemini-3.6-flash."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={key}"
     headers = {"Content-Type": "application/json"}
     
     payload = {
@@ -47,8 +47,7 @@ async def _call_gemini_api(prompt: str, system_instruction: str, key: str) -> st
         error_detail = f"Status {res.status_code}: {res.text}"
         print(f"\n[Gemini REST Error Detail] {error_detail}\n")
         raise RuntimeError(f"Gemini API call failed -> {error_detail}")
-
-
+    
 async def _call_openai_api(prompt: str, system_instruction: str, key: str) -> str:
     """Fallback handler for OpenAI gpt-4o-mini."""
     url = "https://api.openai.com/v1/chat/completions"
@@ -78,10 +77,8 @@ async def _call_openai_api(prompt: str, system_instruction: str, key: str) -> st
 
 
 async def query_llm(prompt: str, context_data: dict = None, target_language: str = "English") -> str:
-    """Unified entry point for backend chat processing."""
     clean_msg = prompt.strip().lower()
 
-    # Fast path for common greetings
     if clean_msg in ["hi", "hello", "hey", "namaste", "hola", "start"]:
         if target_language.lower().startswith("hin"):
             return "नमस्ते! मैं SixSense आपदा सहायता बॉट हूँ। आप सुरक्षित स्थान पर हैं या आपको सहायता की आवश्यकता है?"
@@ -100,27 +97,26 @@ async def query_llm(prompt: str, context_data: dict = None, target_language: str
     if context_data:
         system_instruction += f"\nActive Telemetry Context: {context_data}"
 
-    print(f"[LLM Debug] Key Status -> Gemini: {bool(GEMINI_API_KEY)} | OpenAI: {bool(OPENAI_API_KEY)}")
-
-    # Tier 1: Primary Gemini API
+# Tier 1: Primary Gemini Key
     if GEMINI_API_KEY:
         try:
             return await _call_gemini_api(prompt, system_instruction, GEMINI_API_KEY)
         except Exception as e:
-            print(f"[Tier 1 Error - Gemini Primary]: {e}")
+            print(f"\n[Tier 1 Primary Gemini Failed]: {e}\n")
 
-    # Tier 2: OpenAI Fallback
-    if OPENAI_API_KEY:
-        try:
-            return await _call_openai_api(prompt, system_instruction, OPENAI_API_KEY)
-        except Exception as e:
-            print(f"[Tier 3 Error - OpenAI Fallback]: {e}")
+# Tier 2: Secondary Gemini Key Fallback
+if AISTUDIO_API_KEY:
+    try:
+        return await _call_aistudio_api(prompt, system_instruction, AISTUDIO_API_KEY)
+    except Exception as e:
+        print(f"\n[Tier 2 Secondary Gemini Failed]: {e}\n")
 
-    # Tier 3: Emergency Hardcoded Fallback
-    return (
-        "🚨 **EMERGENCY PROTOCOL ACTIVE**\n\n"
-        "If you are in immediate danger:\n"
-        "1. **Stay calm and seek safe shelter.**\n"
-        "2. **Call Emergency Hotlines directly.**\n\n"
-        f"📞 **HOTLINES:** {REGIONAL_HOTLINES}"
-    )
+# Tier 3: OpenAI Fallback
+if OPENAI_API_KEY:
+    try:
+        return await _call_openai_api(prompt, system_instruction, OPENAI_API_KEY)
+    except Exception as e:
+        print(f"\n[Tier 3 OpenAI Failed]: {e}\n")
+
+# Tier 4: Fallback Response
+return "🚨 **EMERGENCY PROTOCOL ACTIVE**\n\nIf you are in immediate danger:\n1. **Stay calm and move to safe higher ground.**\n2. **Call Emergency Hotlines directly.**\n\n📞 **HOTLINES:** NDMA: **1078** | Emergency: **112** | Ambulance: **102**"

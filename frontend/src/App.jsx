@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents, LayerGroup } from 'react-leaflet';
-import { ShieldAlert, MapPin, PhoneCall, Bot, Send, Navigation, AlertCircle, Info, HeartHandshake } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents, LayersControl } from 'react-leaflet';
+import { ShieldAlert, MapPin, PhoneCall, Bot, Send, Navigation, Info } from 'lucide-react';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
-// Fix default leaflet icons
+// Fix default Leaflet icon paths in React
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -14,11 +15,11 @@ L.Icon.Default.mergeOptions({
 
 const BACKEND_URL = "http://127.0.0.1:8000";
 
-// Map click handler component
+// Map click listener hook component
 function MapClickHandler({ onLocationSelect }) {
   useMapEvents({
     click(e) {
-      onLocationSelect(e.latlng.lat, e.latlng.lng, "Selected Map Point");
+      onLocationSelect(e.latlng.lat, e.latlng.lng, "Selected Map Location");
     },
   });
   return null;
@@ -63,7 +64,7 @@ export default function App() {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          analyzeLocation(pos.coords.latitude, pos.coords.longitude, "Your Current Location");
+          analyzeLocation(pos.coords.latitude, pos.coords.longitude, "Your GPS Location");
         },
         () => alert("Unable to retrieve location. Please click on the map directly.")
       );
@@ -71,57 +72,34 @@ export default function App() {
   };
 
   const handleChatSubmit = async (e) => {
-  e.preventDefault();
-  if (!chatInput.trim()) return;
+    e.preventDefault();
+    if (!chatInput.trim()) return;
 
-  const userText = chatInput;
-  setMessages(prev => [...prev, { sender: 'user', text: userText }]);
-  setChatInput('');
-  setChatLoading(true);
+    const userText = chatInput;
+    setMessages(prev => [...prev, { sender: 'user', text: userText }]);
+    setChatInput('');
+    setChatLoading(true);
 
-  try {
-    const res = await axios.post("/api/chat", { message: userText, language: "English" });
-    if (res.data && res.data.response) {
-      setMessages(prev => [...prev, { sender: 'bot', text: res.data.response }]);
-    } else {
-      setMessages(prev => [...prev, { sender: 'bot', text: '⚠️ Unable to parse bot response.' }]);
-    }
-  } catch (err) {
-    console.error("Chat Error:", err);
-    setMessages(prev => [...prev, { sender: 'bot', text: '🚨 Error connecting to emergency bot service.' }]);
-  } finally {
-    setChatLoading(false);
-  }
-};
-
-  const handleSendMessage = async (userText) => {
-  try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const res = await axios.post(`${BACKEND_URL}/api/chat`, {
         message: userText,
+        lat: coords.lat,
+        lon: coords.lon,
         language: "English"
-      })
-    });
+      });
 
-    // Catch non-200 HTTP statuses explicitly
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("Server Error:", res.status, errText);
-      setMessages(prev => [...prev, { sender: "bot", text: "⚠️ Server temporarily unreachable." }]);
-      return;
+      if (res.data && res.data.response) {
+        setMessages(prev => [...prev, { sender: 'bot', text: res.data.response }]);
+      } else {
+        setMessages(prev => [...prev, { sender: 'bot', text: '⚠️ Unable to parse bot response.' }]);
+      }
+    } catch (err) {
+      console.error("Chat Error:", err);
+      setMessages(prev => [...prev, { sender: 'bot', text: '🚨 Error connecting to emergency bot service.' }]);
+    } finally {
+      setChatLoading(false);
     }
-
-    const data = await res.json();
-    if (data && data.response) {
-      setMessages(prev => [...prev, { sender: "bot", text: data.response }]);
-    }
-  } catch (err) {
-    console.error("Network/Fetch Error:", err);
-    setMessages(prev => [...prev, { sender: "bot", text: "🚨 Connection timeout. Please try again." }]);
-  }
-};
+  };
 
   const getRiskBadge = (severity) => {
     if (!severity) return { bg: 'bg-emerald-500', text: 'SAFE' };
@@ -130,40 +108,40 @@ export default function App() {
     return { bg: 'bg-emerald-600', text: 'SAFE' };
   };
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
       
-      {/* CONSUMER HEADER */}
-      <header className="h-16 border-b border-slate-800 bg-slate-900/90 px-6 flex items-center justify-between z-10">
+      {/* HEADER */}
+      <header className="h-16 border-b border-slate-800 bg-slate-900/90 px-4 md:px-6 flex items-center justify-between z-10 shrink-0">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-red-600/20 text-red-500 rounded-lg border border-red-500/30">
             <ShieldAlert className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              SixSense <span className="text-xs font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">Landslide Warning System</span>
+            <h1 className="text-base md:text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              SixSense <span className="hidden sm:inline-block text-xs font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">Landslide Warning System</span>
             </h1>
-            <p className="text-xs text-slate-400">National AI Landslide Early Warning & Consumer Safety Portal</p>
+            <p className="text-[10px] md:text-xs text-slate-400">National AI Landslide Early Warning & Consumer Safety Portal</p>
           </div>
         </div>
 
-        {/* Quick GPS Location Button */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleUseMyLocation}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-lg transition"
-          >
-            <Navigation className="w-3.5 h-3.5" />
-            Detect My GPS Location
-          </button>
-        </div>
+        <button
+          onClick={handleUseMyLocation}
+          className="px-3 py-1.5 md:px-4 md:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-lg transition shrink-0"
+        >
+          <Navigation className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Detect My GPS Location</span>
+          <span className="sm:hidden">GPS</span>
+        </button>
       </header>
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex overflow-hidden relative">
+      {/* MAIN LAYOUT */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
-        {/* SIDEBAR: Emergency Helplines & Status */}
-        <aside className="w-80 border-r border-slate-800 bg-slate-900/95 p-4 flex flex-col justify-between overflow-y-auto">
+        {/* SIDEBAR */}
+        <aside className="w-full md:w-80 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-900/95 p-4 flex flex-col justify-between overflow-y-auto max-h-[35vh] md:max-h-full shrink-0">
           <div className="space-y-4">
             
             {/* Status Card */}
@@ -181,7 +159,9 @@ export default function App() {
                 Lat: {coords.lat.toFixed(3)}° | Lon: {coords.lon.toFixed(3)}°
               </p>
 
-              {assessment && (
+              {loading ? (
+                <div className="text-xs text-amber-400 mt-3 animate-pulse">Analyzing satellite & weather data...</div>
+              ) : assessment && (
                 <div className="mt-3 pt-3 border-t border-slate-800">
                   <div className="text-2xl font-black text-white">
                     {assessment.risk_score} <span className="text-xs font-normal text-slate-400">/ 100 Risk Score</span>
@@ -193,24 +173,24 @@ export default function App() {
               )}
             </div>
 
-            {/* Live Environmental Telemetry (Auto Fetched) */}
+            {/* Live Environmental Telemetry */}
             {telemetry && (
               <div className="p-3 rounded-xl border border-slate-800 bg-slate-950/40 text-xs space-y-2">
                 <div className="text-slate-400 font-semibold flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 text-blue-400" /> Real-time Satellite Data
+                  <Info className="w-3.5 h-3.5 text-blue-400" /> Real-time Telemetry
                 </div>
                 <div className="flex justify-between text-slate-300">
                   <span>Precipitation (Rain):</span>
                   <span className="font-bold">{telemetry.rainfall_mm} mm</span>
                 </div>
                 <div className="flex justify-between text-slate-300">
-                  <span>Soil Moisture Saturation:</span>
+                  <span>Soil Saturation:</span>
                   <span className="font-bold">{telemetry.soil_moisture_pct}%</span>
                 </div>
               </div>
             )}
 
-            {/* EMERGENCY HELPLINES DIRECTORY */}
+            {/* Emergency Helplines */}
             <div className="p-4 rounded-xl border border-red-500/20 bg-red-950/10 space-y-2">
               <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
                 <PhoneCall className="w-3.5 h-3.5" /> Emergency Helplines
@@ -222,48 +202,56 @@ export default function App() {
                 </a>
                 <a href="tel:112" className="p-2 bg-slate-800 hover:bg-slate-700 rounded text-center border border-slate-700">
                   <div className="text-red-400 font-bold">112</div>
-                  <div className="text-[10px] text-slate-400">National Emergency</div>
-                </a>
-                <a href="tel:100" className="p-2 bg-slate-800 hover:bg-slate-700 rounded text-center border border-slate-700">
-                  <div className="text-red-400 font-bold">100</div>
-                  <div className="text-[10px] text-slate-400">Police Control</div>
-                </a>
-                <a href="tel:102" className="p-2 bg-slate-800 hover:bg-slate-700 rounded text-center border border-slate-700">
-                  <div className="text-red-400 font-bold">102</div>
-                  <div className="text-[10px] text-slate-400">Ambulance</div>
+                  <div className="text-[10px] text-slate-400">Emergency</div>
                 </a>
               </div>
             </div>
-
-          </div>
-
-          <div className="text-[11px] text-slate-500 text-center border-t border-slate-800 pt-3">
-            Click anywhere on the map to evaluate terrain risk.
           </div>
         </aside>
 
-        {/* MAP PANEL */}
-        <main className="flex-1 relative">
-          <MapContainer center={[coords.lat, coords.lon]} zoom={11} className="h-full w-full">
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            
-            {/* Click to inspect terrain listener */}
+        {/* MAP CONTAINER */}
+        <main className="flex-1 relative h-full">
+          <MapContainer center={[coords.lat, coords.lon]} zoom={10} className="h-full w-full">
+            <LayersControl position="topright">
+              {/* Layer 1: Standard Street Map */}
+              <LayersControl.BaseLayer checked name="OpenStreetMap">
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+              </LayersControl.BaseLayer>
+
+              {/* Layer 2: ESRI Satellite View */}
+              <LayersControl.BaseLayer name="Satellite View">
+                <TileLayer
+                  attribution="Tiles &copy; Esri"
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                />
+              </LayersControl.BaseLayer>
+
+              {/* Thermal / Cloud Overlay */}
+              <LayersControl.Overlay name="NASA Thermal Infrared">
+                <TileLayer
+                  attribution="NASA GIBS"
+                  url={`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/${todayStr}/250m/{z}/{y}/{x}.png`}
+                  opacity={0.5}
+                />
+              </LayersControl.Overlay>
+            </LayersControl>
+
             <MapClickHandler onLocationSelect={(lat, lon, name) => analyzeLocation(lat, lon, name)} />
 
-            {/* Selected Location Marker */}
+            {/* Selected Location Pin */}
             <Marker position={[coords.lat, coords.lon]}>
               <Popup>
                 <div className="text-slate-900 font-sans text-xs">
                   <strong>{coords.name}</strong><br />
-                  Risk Index: {assessment?.risk_score || "Analyzing..."}
+                  Risk Score: {assessment?.risk_score ?? "Evaluating..."}
                 </div>
               </Popup>
             </Marker>
 
-            {/* Dynamic Hazard Circle */}
+            {/* Hazard Radius Circle */}
             {assessment && (
               <Circle
                 center={[coords.lat, coords.lon]}
@@ -278,21 +266,21 @@ export default function App() {
           </MapContainer>
 
           {/* FLOATING SAFETY CHATBOT */}
-          <div className="absolute bottom-6 right-6 z-[1000]">
+          <div className="absolute bottom-12 right-4 md:right-6 z-[1000]">
             {!isChatOpen ? (
               <button
                 onClick={() => setIsChatOpen(true)}
-                className="p-3.5 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold transition transform hover:scale-105"
+                className="p-3 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold transition transform hover:scale-105"
               >
                 <Bot className="w-5 h-5" />
-                <span>Safety Assistant</span>
+                <span className="hidden sm:inline">Safety Assistant</span>
               </button>
             ) : (
-              <div className="w-96 h-[450px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+              <div className="w-[88vw] sm:w-96 h-[380px] sm:h-[450px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
                 <div className="p-3 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <Bot className="w-4 h-4 text-red-500" />
-                    <span className="font-bold text-xs text-white">Safety & Disaster Bot</span>
+                    <span className="font-bold text-xs text-white">Safety & Emergency Assistant</span>
                   </div>
                   <button onClick={() => setIsChatOpen(false)} className="text-slate-400 text-xs px-2 py-0.5 rounded bg-slate-700">
                     Close
@@ -309,13 +297,13 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                  {chatLoading && <div className="text-xs text-slate-500 italic">Thinking...</div>}
+                  {chatLoading && <div className="text-xs text-slate-500 italic">Evaluating risk protocols...</div>}
                 </div>
 
                 <form onSubmit={handleChatSubmit} className="p-2.5 bg-slate-800 border-t border-slate-700 flex gap-2">
                   <input
                     type="text"
-                    placeholder="Ask about evacuation, helplines..."
+                    placeholder="Ask about evacuation, safe zones..."
                     className="flex-1 bg-slate-900 border border-slate-700 text-xs text-white rounded-lg px-3 py-2 focus:outline-none"
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
@@ -330,15 +318,15 @@ export default function App() {
         </main>
       </div>
 
-      {/* CONSUMER FOOTER */}
-      <footer className="h-10 border-t border-slate-800 bg-slate-950 px-6 flex items-center justify-between text-[11px] text-slate-500 z-10">
-        <div>
-          © 2026 SixSense Early Warning Network • Public Disaster Safety Portal
+      {/* EMERGENCY DISASTER NEWS TICKER */}
+      <footer className="h-9 border-t border-slate-800 bg-slate-950 flex items-center z-20 overflow-hidden shrink-0">
+        <div className="bg-red-600 text-white text-[10px] font-extrabold px-3 py-1 uppercase tracking-wider shrink-0 z-10 flex items-center h-full">
+          LIVE HAZARD ALERTS
         </div>
-        <div className="flex gap-4 text-slate-400">
-          <a href="#" className="hover:underline">Privacy Policy</a>
-          <a href="#" className="hover:underline">Terms of Service</a>
-          <a href="#" className="hover:underline">NDMA Data Guidelines</a>
+        <div className="overflow-hidden whitespace-nowrap w-full relative">
+          <div className="inline-block animate-[ticker_30s_linear_infinite] text-xs text-red-400 font-medium pl-4">
+            🚨 IMD Warning: Moderate to Heavy Rainfall predicted across Sikkim & Northern Uttarakhand. • Landslide risk flagged along NH-10. • NDMA Helpline active: 1078. • Flash flood advisory issued for high-slope Himalayan zones.
+          </div>
         </div>
       </footer>
 

@@ -14,7 +14,7 @@ REGIONAL_HOTLINES = "NDMA: 1078, Emergency: 112, Police: 100, Ambulance: 102"
 
 async def _call_gemini_api(prompt: str, key: str) -> str:
     # Use a standard, active Gemini endpoint
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent"
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": key

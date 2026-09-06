@@ -1,90 +1,95 @@
 # core/llm.py
 import os
-import asyncio
+import httpx
 from dotenv import load_dotenv
-import google.generativeai as genai
-from openai import OpenAI
 
 load_dotenv()
 
-# Environment Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 AISTUDIO_API_KEY = os.getenv("AISTUDIO_API_KEY", "").strip()
 
 
-def _call_gemini_sync(full_prompt: str, key: str) -> str:
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(full_prompt)
-    return response.text
+async def _call_gemini_api(prompt: str, key: str) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 200}
+    }
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        res = await client.post(url, json=payload)
+        if res.status_code == 200:
+            data = res.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+    raise Exception(f"Gemini API status {res.status_code}")
 
 
-def _call_openai_sync(full_prompt: str, key: str) -> str:
-    client = OpenAI(api_key=key)
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": full_prompt}],
-        max_tokens=250,
-        temperature=0.7,
-    )
-    return response.choices[0].message.content
+async def _call_openai_api(prompt: str, key: str) -> str:
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 200,
+        "temperature": 0.4
+    }
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        res = await client.post(url, headers=headers, json=payload)
+        if res.status_code == 200:
+            data = res.json()
+            return data["choices"][0]["message"]["content"]
+    raise Exception(f"OpenAI API status {res.status_code}")
 
 
 async def query_llm(prompt: str, context_data: dict = None, target_language: str = "English") -> str:
+    clean_msg = prompt.strip().lower()
+
+    # FAST-PATH: Instant local response for greetings (< 5ms response time)
+    if clean_msg in ["hi", "hello", "hey", "namaste", "hola", "start"]:
+        if target_language.lower().startswith("hin"):
+            return "नमस्ते! मैं SixSense आपदा सहायता बॉट हूँ। आप सुरक्षित स्थान पर हैं या आपको सहायता की आवश्यकता है?"
+        return "Hello! I am SixSense Emergency Assistant. Are you in a safe location, or do you require immediate disaster response assistance?"
+
     system_context = (
-        "You are SixSense AI, an empathetic disaster assistant and emergency safety guide (SIH26001).\n\n"
-        "RESPONSE RULES:\n"
-        "1. DO NOT give robotic template responses or repeat 'Hi' when someone is in distress.\n"
-        "2. For distress or emergency calls, speak with calm empathy, give 2 immediate physical survival steps, "
-        "and provide hotlines (NDMA 1078 | Emergency 112 | Ambulance 102).\n"
+        f"You are SixSense AI, an empathetic disaster response assistant (SIH26001).\n"
+        f"RULES:\n"
+        f"1. Give direct, practical safety instructions without generic fluff.\n"
+        f"2. For entrapment or injury, give 2 immediate physical survival steps and hotlines (NDMA 1078 | Emergency 112 | Ambulance 102).\n"
         f"3. Language Requirement: Respond entirely in {target_language}.\n"
-        "4. Keep responses direct, clear, and concise for low-bandwidth screens."
+        f"4. Maximum 80 words."
     )
 
     if context_data:
-        system_context += f"\nActive Telemetry Context: {context_data}"
+        system_context += f"\nActive Telemetry: {context_data}"
 
     full_prompt = f"{system_context}\n\nUser Query: {prompt}"
 
-    # Tier 1: Primary Gemini API Key
+    # TIER 1: Primary Gemini API (3s Timeout)
     if GEMINI_API_KEY and len(GEMINI_API_KEY) > 10:
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(_call_gemini_sync, full_prompt, GEMINI_API_KEY),
-                timeout=6.0
-            )
+            return await _call_gemini_api(full_prompt, GEMINI_API_KEY)
         except Exception as e:
-            print(f"[Tier 1 - Primary Gemini Failed]: {e}")
+            print(f"[Tier 1 Gemini Failed]: {e}")
 
-    # Tier 2: OpenAI API Key (GPT-4o-mini)
+    # TIER 2: OpenAI GPT-4o-mini (3s Timeout)
     if OPENAI_API_KEY and len(OPENAI_API_KEY) > 10:
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(_call_openai_sync, full_prompt, OPENAI_API_KEY),
-                timeout=6.0
-            )
+            return await _call_openai_api(full_prompt, OPENAI_API_KEY)
         except Exception as e:
-            print(f"[Tier 2 - OpenAI Failed]: {e}")
+            print(f"[Tier 2 OpenAI Failed]: {e}")
 
-    # Tier 3: Secondary AI Studio Gemini Key
+    # TIER 3: Secondary AI Studio Gemini Key (3s Timeout)
     if AISTUDIO_API_KEY and len(AISTUDIO_API_KEY) > 10:
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(_call_gemini_sync, full_prompt, AISTUDIO_API_KEY),
-                timeout=6.0
-            )
+            return await _call_gemini_api(full_prompt, AISTUDIO_API_KEY)
         except Exception as e:
-            print(f"[Tier 3 - Secondary AI Studio Gemini Failed]: {e}")
+            print(f"[Tier 3 AI Studio Failed]: {e}")
 
-    # Tier 4: Fail-safe Static Response (If all 3 cloud APIs fail)
+    # TIER 4: Immediate Fail-Safe Protocol
     return (
         "🚨 **EMERGENCY PROTOCOL ACTIVE**\n\n"
-        "Please remain calm. If you are trapped, injured, or in immediate danger:\n"
-        "1. **Conserve Energy:** Stay still and cover your nose and mouth if dust is present.\n"
-        "2. **Signal for Help:** Tap rhythmically on pipes or walls so rescuers can locate you.\n\n"
-        "📞 **IMMEDIATE HOTLINES:**\n"
-        "• **NDMA Helpline:** 1078\n"
-        "• **National Emergency:** 112\n"
-        "• **Ambulance:** 102"
+        "If you are trapped or in immediate danger:\n"
+        "1. **Conserve Energy:** Stay still and cover your nose and mouth.\n"
+        "2. **Signal Rescuers:** Tap rhythmically on pipes or hard structures.\n\n"
+        "📞 **HOTLINES:** NDMA: **1078** | Emergency: **112** | Ambulance: **102**"
     )

@@ -1,8 +1,16 @@
-# S:\Projects\sixsense\backend\api\index.py
 import sys
 import os
 
-# Add root backend directory to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root and backend folder to Python path
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(CURRENT_DIR)
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 
-from app.main import app
+for path in [PROJECT_ROOT, BACKEND_DIR]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+try:
+    from app.main import app
+except ImportError:
+    from backend.app.main import app

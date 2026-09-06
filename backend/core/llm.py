@@ -25,8 +25,9 @@ async def _call_gemini_api(prompt: str, key: str) -> str:
         ],
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 300
+            "maxOutputTokens": 6000
         }
+
     }
     
     async with httpx.AsyncClient(timeout=8.0) as client:

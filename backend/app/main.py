@@ -9,8 +9,10 @@ from pydantic import BaseModel
 # Import core processing engines with fallback handling
 try:
     from backend.core.llm import query_llm
+    from backend.alerts.sms_service import send_landslide_alert
 except ModuleNotFoundError:
     from core.llm import query_llm
+    from alerts.sms_service import send_landslide_alert
 
 app = FastAPI(title="SixSense Disaster Prevention API", version="2.0.0")
 
@@ -33,6 +35,15 @@ class ChatRequest(BaseModel):
     lat: Optional[float] = None
     lon: Optional[float] = None
     language: Optional[str] = "English"
+
+
+class IncidentReportRequest(BaseModel):
+    lat: float
+    lon: float
+    sector_name: Optional[str] = "Selected Location"
+    reporter_message: str
+    recipient: Optional[str] = None
+    photo_name: Optional[str] = None
 
 
 async def fetch_realtime_environmental_data(lat: float, lon: float):
@@ -106,8 +117,6 @@ async def chat_assistant(req: ChatRequest):
         if req.lat is not None and req.lon is not None:
             rain, soil = await fetch_realtime_environmental_data(req.lat, req.lon)
             context_data = {
-                "latitude": req.lat,
-                "longitude": req.lon,
                 "recent_rainfall_mm": rain,
                 "soil_moisture_pct": soil
             }
@@ -136,3 +145,18 @@ async def chat_assistant(req: ChatRequest):
                 )
             }
         )
+
+
+@app.post("/api/report")
+async def report_landslide(req: IncidentReportRequest):
+    """Create an authority-ready incident alert and send it by SMS when configured."""
+    message = (
+        f"SIXSENSE LANDSLIDE REPORT\n"
+        f"Location: {req.sector_name}\n"
+        f"Coordinates: {req.lat:.5f}, {req.lon:.5f}\n"
+        f"Report: {req.reporter_message.strip()}\n"
+        f"Evidence: {req.photo_name or 'No media attached'}\n"
+        "Verify conditions and dispatch local response personnel."
+    )
+    result = send_landslide_alert(message, req.recipient)
+    return {"status": result.get("status", "error"), "alert": result, "report": message}
